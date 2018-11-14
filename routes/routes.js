@@ -1,6 +1,7 @@
 const gtfsrb = require('gtfs-realtime-bindings');
 const request = require('request');
 const fs = require('fs');
+const protobuf = require('protobufjs');
 
 // App to retrieve short lived token
 const client_id = '';
@@ -68,9 +69,12 @@ function getVehiclesPosition(type) {
                 method: 'GET',
                 encoding: null
             }, function (error, res, body) {
-                if (!error && res.statusCode == 200) {                    
-                    const feed = gtfsrb.FeedMessage.decode(body);
-                    resolve(feed.entity);
+                if (!error && res.statusCode == 200) {
+                    protobuf.load('gtfs.proto', (err, root) => {
+                        const feedMessage = root.lookupType("transit_realtime.FeedMessage");
+                        const feed = feedMessage.decode(body);
+                        resolve(feed.entity);
+                    });
                 } else {
                     reject(error);
                 }
@@ -94,6 +98,14 @@ const createCSV = (vehiclesPosition, transitType) => {
                 vehicle.vehicle.position &&
                 vehicle.vehicle.trip) {
 
+                if (transitType === 'sydneytrains' && vehicle.vehicle.vehicle.id.length > 40) {
+                    vehicle.vehicle.vehicle.id = "R.29";
+                }
+
+                if (transitType === 'buses' && vehicle.vehicle.vehicle['.transit_realtime.tfnswVehicleDescriptor'].performingPriorTrip) {
+                    return;
+                }
+
                 const vehicleExisted = vehiclesSeen.filter(v => v === vehicle.vehicle.vehicle.id);
 
                 if (!vehicleExisted.length) {
@@ -105,14 +117,14 @@ const createCSV = (vehiclesPosition, transitType) => {
 
                     let attributes = {
                         vehicle_id: vehicle.vehicle.vehicle.id || '',
-                        trip_id: vehicle.vehicle.trip.trip_id || '',
-                        route_id: vehicle.vehicle.trip.route_id || '',
+                        trip_id: vehicle.vehicle.trip.tripId || '',
+                        route_id: vehicle.vehicle.trip.routeId || '',
                         bearing: vehicle.vehicle.position.bearing || '',
-                        start_date: vehicle.vehicle.trip.start_date || '',
-                        start_time: vehicle.vehicle.trip.start_time || '',                        
+                        start_date: vehicle.vehicle.trip.startDate || '',
+                        start_time: vehicle.vehicle.trip.startTime || '',
                         speed: vehicle.vehicle.position.speed || '',
-                        congestion_level: congestionLevel[vehicle.vehicle.congestion_level] || 'UNKNOWN_CONGESTION_LEVEL',
-                        occupancy_status: occupancyStatus[vehicle.vehicle.occupancy_status] || '',
+                        congestion_level: congestionLevel[vehicle.vehicle.congestionLevel] || 'UNKNOWN_CONGESTION_LEVEL',
+                        occupancy_status: occupancyStatus[vehicle.vehicle.occupancyStatus] || '',
                         TransitType: transitType,
                         APIdate: vehicle.vehicle.timestamp.toString() || ''
                     }
